@@ -1,6 +1,10 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { DataSource, EntityManager, Repository } from 'typeorm';
-import { CreateUserDto } from './dto';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Repository } from 'typeorm';
+import { CreateUserDto, SignInUserDto } from './dto';
 import { User } from './user.entity';
 import * as bcyrpt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -25,8 +29,8 @@ export class AuthService {
       const hash = await bcyrpt.hash(createUserDto.password, salt);
 
       const user = await this.repository.save({
-        surname: createUserDto.surname,
         name: createUserDto.name,
+        surname: createUserDto.surname,
         email: createUserDto.email,
         passwordHash: hash,
       });
@@ -39,10 +43,39 @@ export class AuthService {
         surname: user.surname,
       });
 
-      return token;
+      return {
+        access_token: token,
+      };
     } catch (e) {
       throw new ForbiddenException(e);
     }
+  }
+
+  public async signIn(signInUserDto: SignInUserDto) {
+    const user = await this.repository.findOne({
+      where: {
+        email: signInUserDto.email,
+      },
+    });
+
+    const isMatch = await bcyrpt.compare(
+      signInUserDto.password,
+      user.passwordHash,
+    );
+
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid Credentials');
+    }
+
+    const token = await this.signToken({
+      name: user.name,
+      surname: user.surname,
+      email: user.email,
+    });
+
+    return {
+      access_token: token,
+    };
   }
 
   public async signToken(userPayload: UserPayload) {
